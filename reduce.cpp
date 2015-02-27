@@ -28,15 +28,15 @@ double getWallTime()
   return timeofday.tv_sec + timeofday.tv_usec / 1000000.0;
 }
 
-unsigned long __attribute__((optimize("O0"))) serialSum(vector<unsigned int> &vec){
-  unsigned long result = 0;
+unsigned long __attribute__((optimize("O1"))) serialSum(vector<unsigned int> &vec){
+   __attribute__((__aligned__((64)))) unsigned long result = 0;
   for (size_t i = 0; i < vec.size(); ++i)
     result += vec[i];
   return result;
 }
 
-unsigned long __attribute__((optimize("O0"))) parallelSumOneAccumulate(vector<unsigned int> &vec){
-  unsigned long result = 0;
+unsigned long __attribute__((optimize("O1"))) parallelSumOneAccumulate(vector<unsigned int> &vec){
+  __attribute__((__aligned__((64)))) unsigned long result = 0;
   #pragma omp parallel for // Start a team of threads to calculate the sum
   for (size_t i = 0; i < vec.size(); ++i)
     #pragma omp atomic
@@ -44,7 +44,21 @@ unsigned long __attribute__((optimize("O0"))) parallelSumOneAccumulate(vector<un
   return result;
 }
 
-unsigned long __attribute__((optimize("O0"))) parallelSumReduceFalseSharing(vector<unsigned int> &vec){
+unsigned long __attribute__((optimize("O1"))) parallelSumReduce(vector<unsigned int> &vec){
+  unsigned long result = 0;
+  #pragma omp parallel // Start a team of threads to calculate the sum
+  {
+    __attribute__((__aligned__((64)))) unsigned long privateResult = 0; //Ensure private results are on their own cache lines
+    #pragma omp for
+    for (size_t i = 0; i < vec.size(); ++i)
+      privateResult += vec[i];
+    #pragma omp atomic
+    result += privateResult;
+  }
+  return result;
+}
+
+/*unsigned long __attribute__((optimize("O0"))) parallelSumReduceFalseSharing(vector<unsigned int> &vec){
   unsigned long result = 0;
   unsigned long *privateResult = 0;
   void *alignedMem;
@@ -64,21 +78,7 @@ unsigned long __attribute__((optimize("O0"))) parallelSumReduceFalseSharing(vect
     result += privateResult[threadId];
   }
   return result;
-}
-
-unsigned long __attribute__((optimize("O0"))) parallelSumReduce(vector<unsigned int> &vec){
-  unsigned long result = 0;
-  #pragma omp parallel // Start a team of threads to calculate the sum
-  {
-    __attribute__((__aligned__((64)))) unsigned long privateResult = 0; //Ensure private results are on their own cache lines
-    #pragma omp for
-    for (size_t i = 0; i < vec.size(); ++i)
-      privateResult += vec[i];
-    #pragma omp atomic
-    result += privateResult;
-  }
-  return result;
-}
+}*/
 
 int main(int argc, char *argv[]) {
   // Initialize base array
@@ -104,13 +104,13 @@ int main(int argc, char *argv[]) {
   cout << "\ttime elapsed" << " : " << getWallTime()-start << " sec" << endl;
   assert(parallelSumSharedResult == serialSumResult);
 
-  // Parallel summation (false sharing)
+  /*// Parallel summation (false sharing)
   cout << "Summing with reduction (false sharing)\n";
   start = getWallTime();
   auto parallelSumPrivateFalseResult = parallelSumReduceFalseSharing(arr);
   cout << "\tresult: " << parallelSumPrivateFalseResult << endl;
   cout << "\ttime elapsed" << " : " << getWallTime()-start << " sec" << endl;
-  assert(parallelSumPrivateFalseResult == serialSumResult);
+  assert(parallelSumPrivateFalseResult == serialSumResult);*/
 
   // Parallel summation (map and reduce)
   cout << "Summing with reduction\n";
